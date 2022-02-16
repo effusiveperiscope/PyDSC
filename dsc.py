@@ -90,9 +90,12 @@ class DSCData:
         # maximum
         l_region = (self.np_Tr < peak_tr) & (self.np_Tr > self.np_Tr[l_idx])
         r_region = (self.np_Tr > peak_tr) & (self.np_Tr < self.np_Tr[r_idx])
-        print(peak_idx, l_idx, r_idx)
-        l_extrap_idx = np.argmax(np.abs(self.Heatflow1Deriv[l_region]))
-        r_extrap_idx = np.argmax(np.abs(self.Heatflow1Deriv[r_region]))
+        l_extrap_idx = \
+            self.np_Index[l_region][
+                np.argmax(np.abs(self.Heatflow1Deriv[l_region]))]
+        r_extrap_idx = \
+            self.np_Index[r_region][
+                np.argmax(np.abs(self.Heatflow1Deriv[r_region]))]
 
         return {
             "peak_idx": peak_idx,
