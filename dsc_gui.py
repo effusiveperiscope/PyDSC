@@ -1,7 +1,7 @@
 import sys
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
-    QVBoxLayout, QTableWidget, QListWidget, QPlainTextEdit, QLineEdit,
-    QFileDialog)
+from PySide6.QtWidgets import (QApplication, QPushButton, QMainWindow, QWidget,
+        QHBoxLayout, QVBoxLayout, QTableWidget, QListWidget, QPlainTextEdit,
+        QLineEdit, QFileDialog)
 from PySide6.QtCore import (Slot, Signal, QStringList)
 
 # Main Window
@@ -16,6 +16,8 @@ class UI_MainWindow(QMainWindow):
         # Menu
         self.menu = self.menuBar()
         self.file_menu = self.menu.addMenu("File")
+        self.dsc_button = QPushButton()
+        self.tg_button = QPushButton()
 
         ### Actions
         open_action = QAction("Open", self)
