@@ -7,7 +7,7 @@ from util import get_encoding_type, print_summary_stats, si_intersect
 SAVGOL_WINDOW_LENGTH = 5
 SAVGOL_POLYORDER = 3
 
-np.seterr(invalid='ignore')
+np.seterr(divide='ignore', invalid='ignore')
 
 #################### DSC data base class ####################
 class DSCData:
@@ -71,10 +71,12 @@ class DSCData:
         sel_mask = self.get_tr_selection_mask(eclick.xdata, erelease.xdata)
 
         idx_in_sel = self.np_Index[sel_mask]
+
         l_idx = idx_in_sel[np.argmin(self.np_Tr[sel_mask])]
         r_idx = idx_in_sel[np.argmax(self.np_Tr[sel_mask])]
 
         hf_idx = np.argmin(np.abs(self.Heatflow1Deriv[sel_mask]))
+
         peak_idx = idx_in_sel[hf_idx]
         peak_tr = self.np_Tr[peak_idx]
 
@@ -88,6 +90,7 @@ class DSCData:
         # maximum
         l_region = (self.np_Tr < peak_tr) & (self.np_Tr > self.np_Tr[l_idx])
         r_region = (self.np_Tr > peak_tr) & (self.np_Tr < self.np_Tr[r_idx])
+        print(peak_idx, l_idx, r_idx)
         l_extrap_idx = np.argmax(np.abs(self.Heatflow1Deriv[l_region]))
         r_extrap_idx = np.argmax(np.abs(self.Heatflow1Deriv[r_region]))
 
@@ -178,60 +181,20 @@ class DSCData:
         }
         
 #################### Text parsing ####################
-RE_SCINOT = re.compile('-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+\-]?\d+)?')
-RE_DIGIT = re.compile('\d+')
-def parse_tabulated_line(text):
-    ret = {'Index':0, 't':0.0, 'Heatflow':0.0, 'Tr':0.0,
-        'skip_idx': 0}
-    # Index
-    m = RE_DIGIT.search(text)
-    text = text[m.end():]
-    ret['Index'] = int(m.group(0))
-
-    # t
-    m = RE_SCINOT.search(text)
-    text = text[m.end():]
-    ret['t'] = float(m.group(0))
-
-    # Heatflow
-    m = RE_SCINOT.search(text)
-    text = text[m.end():]
-    ret['Heatflow'] = float(m.group(0))
-
-    # Tr
-    m = RE_SCINOT.search(text)
-    text = text[m.end():]
-    ret['Tr'] = float(m.group(0))
-    return ret
+RE_LINE = re.compile(
+    '(\d+)\s+' # int
+    '(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+\-]?\d+)?)\s+' # float
+    '(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+\-]?\d+)?)\s+' # float
+    '(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+\-]?\d+)?)') # float
 
 def parse_tabulated_txt(text):
-    # Skip two lines (headers)
-    for _ in range(2):
-        i = text.find('\n')
-        if i == -1:
-            raise Exception('No newline found')
-        if i+1 >= len(text):
-            raise Exception('No newline found')
-        text = text[(i+1):]
-
-    # Truncate last line (footer)
-    for _ in range(2):
-        i = text.rfind('\n')
-        text = text[:i]
-
-    row = {}
     ret = DSCData()
-    while row is not None:
-        row = parse_tabulated_line(text)
-        if row is None: break
-        ret.Index.append(row['Index'])
-        ret.t.append(row['t'])
-        ret.Heatflow.append(row['Heatflow'])
-        ret.Tr.append(row['Tr'])
-        i = text.find('\n')
-        if i == -1:
-            break
-        if i+1 >= len(text):
-            break
-        text = text[(i+1):]
+    m = re.findall(RE_LINE, text)
+    if not len(m):
+        raise Exception("No rows parsed; possibly wrong file type")
+    for (Index, t, Heatflow, Tr) in m:
+        ret.Index.append(int(Index))
+        ret.t.append(float(t))
+        ret.Heatflow.append(float(Heatflow))
+        ret.Tr.append(float(Tr))
     return ret

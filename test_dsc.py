@@ -8,13 +8,8 @@ TEST_TEXT = '''         Index             t      Heatflow            Tr
 PET_group2, 02.02.2022 20:36:15'''
 
 class TestDSC(unittest.TestCase):
-    def test_parse_row(self):
-        row = dsc.parse_tabulated_line(
-            '0  0.00000e+000 -8.4e-002  2.50000e+001\n')
-        self.assertEqual(row['Index'], 0)
-        self.assertEqual(row['t'], 0.0)
-        self.assertEqual(row['Heatflow'], -8.4e-002)
-        self.assertEqual(row['Tr'], 2.5e1)
+    def test_parse_regex(self):
+        m = dsc.RE_LINE.findall(TEST_TEXT)
 
     def test_parse_text(self):
         data = dsc.parse_tabulated_txt(TEST_TEXT)
