@@ -4,7 +4,8 @@ import matplotlib.widgets as mwidgets
 from dsc import parse_tabulated_txt
 from util import get_encoding_type
 
-matplotlib.use('TkAgg')
+# Using Qt backend
+matplotlib.use('Qt5Agg')
 
 def dsc_plot(data):
     # Prepare data
@@ -93,10 +94,6 @@ def dsc_plot(data):
     ax.set_ylabel('Heatflow')
     plt.show()
 
-
-def plot_dsc(data):
-    dsc_plot = DSCPlot(data)
-
 import argparse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -104,10 +101,8 @@ if __name__ == '__main__':
         'software.')
     parser.add_argument('file', help='file to plot')
     args = parser.parse_args()
-    print("matplotlib - Using "+matplotlib.get_backend()+" backend.")
 
     with open(args.file,
         encoding = get_encoding_type(args.file)) as f:
         text = f.read()
-
         dsc_plot(parse_tabulated_txt(text))
