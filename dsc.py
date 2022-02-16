@@ -140,9 +140,10 @@ class DSCData:
         sel_mask = self.get_tr_selection_mask(eclick.xdata, erelease.xdata)
 
         ### Find Tg
-        # Point of maximum absolute first derivative  (i.e. "inflection
+        # Point of maximum absolute first derivative (i.e. "inflection
         # temperature")
-        tg_idx = self.np_Index[np.argmax(self.Heatflow1Deriv[sel_mask])]
+        tg_idx = self.np_Index[sel_mask][
+            np.argmax(np.abs(self.Heatflow1Deriv[sel_mask]))]
         return {"tig_idx": tg_idx}
 
     # tg_index
@@ -160,22 +161,22 @@ class DSCData:
         r_offset = self.offset_of(r_idx, r_deriv)
 
         # Inflection (point of greatest slope)
-        ig_idx = tg_detect1(self, eclick, release)["tig_idx"]
+        tig_idx = self.tg_detect1(eclick, erelease)["tig_idx"]
 
-        ig_deriv = self.Heatflow1Deriv[ig_idx]
-        ig_offset = self.offset_of(ig_idx, ig_deriv)
+        tig_deriv = self.Heatflow1Deriv[tig_idx]
+        tig_offset = self.offset_of(tig_idx, tig_deriv)
         
         # Extrapolated onset temperature
-        tf_pt = si_intersect(l_deriv, ig_deriv, l_offset, ig_offset)
+        tf_pt = si_intersect(l_deriv, tig_deriv, l_offset, tig_offset)
         tf_idx = np.argmin(np.abs(self.np_Tr - tf_pt[0]))
 
         # Extrapolated end temperature
-        te_pt = si_intersect(r_deriv, ig_deriv, r_offset, ig_offset)
+        te_pt = si_intersect(r_deriv, tig_deriv, r_offset, tig_offset)
         te_idx = np.argmin(np.abs(self.np_Tr - te_pt[0]))
 
         # Midpoint temperature
         tm_idx = np.argmin(np.abs(self.np_Heatflow - np.mean(
-            [tf_idx[1],te_idx[1]])))
+            [tf_pt[1],te_pt[1]])))
 
         return {
             "tig_idx": tig_idx,

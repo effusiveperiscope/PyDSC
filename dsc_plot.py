@@ -35,7 +35,13 @@ def dsc_plot(data):
         pass
 
     def tg_selector(eclick, erelease):
-        tg = data.tg_detect(eclick, erelease)
+        tg = data.tg_detect2(eclick, erelease)
+        ax.plot(data[tg["tig_idx"]][0],
+            data[tg["tig_idx"]][1], 'ro')
+        ax.plot(data[tg["tf_idx"]][0],
+            data[tg["tf_idx"]][1], 'go')
+        ax.plot(data[tg["tm_idx"]][0],
+            data[tg["tm_idx"]][1], 'bo')
         pass
 
     peak_props = dict(facecolor='blue', alpha=0.1)
