@@ -94,15 +94,15 @@ def dsc_plot(data):
     ax.set_ylabel('Heatflow')
     plt.show()
 
-import argparse
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Plots tabulated text export from Mettler-Toledo STARe '
-        'software.')
-    parser.add_argument('file', help='file to plot')
-    args = parser.parse_args()
-
-    with open(args.file,
-        encoding = get_encoding_type(args.file)) as f:
-        text = f.read()
-        dsc_plot(parse_tabulated_txt(text))
+#import argparse
+#if __name__ == '__main__':
+#    parser = argparse.ArgumentParser(
+#        description='Plots tabulated text export from Mettler-Toledo STARe '
+#        'software.')
+#    parser.add_argument('file', help='file to plot')
+#    args = parser.parse_args()
+#
+#    with open(args.file,
+#        encoding = get_encoding_type(args.file)) as f:
+#        text = f.read()
+#        dsc_plot(parse_tabulated_txt(text))

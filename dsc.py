@@ -2,7 +2,8 @@ import numpy as np
 import scipy.signal as ss
 import itertools
 import re
-from util import get_encoding_type, print_summary_stats, si_intersect
+from util import get_encoding_type, print_summary_stats, si_intersect, \
+    filter_control
 
 SAVGOL_WINDOW_LENGTH = 5
 SAVGOL_POLYORDER = 3
@@ -16,7 +17,8 @@ class DSCData:
         self.t = []
         self.Heatflow = []
         self.Tr = []
-
+        self.name = ""
+        self.notes = ""
 
     # Tr space
     def get_tr_selection_mask(self, data_click_x, data_release_x):
@@ -193,12 +195,14 @@ RE_LINE = re.compile(
 
 def parse_tabulated_txt(text):
     ret = DSCData()
-    m = re.findall(RE_LINE, text)
-    if not len(m):
+    stored_m = None
+    for m in re.finditer(RE_LINE, text):
+        ret.Index.append(int(m.group(1)))
+        ret.t.append(float(m.group(2)))
+        ret.Heatflow.append(float(m.group(3)))
+        ret.Tr.append(float(m.group(4)))
+        stored_m = m
+    if not len(ret.Index):
         raise Exception("No rows parsed; possibly wrong file type")
-    for (Index, t, Heatflow, Tr) in m:
-        ret.Index.append(int(Index))
-        ret.t.append(float(t))
-        ret.Heatflow.append(float(Heatflow))
-        ret.Tr.append(float(Tr))
+    ret.notes = filter_control(text[stored_m.end():])
     return ret
