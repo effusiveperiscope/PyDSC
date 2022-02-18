@@ -173,6 +173,8 @@ class UI_MainWindow(QMainWindow):
             self.dscanalysis.receive_analysis)
         self.pydsc.dscplot.canceled_analysis.connect(
             self.dscanalysis.cancel_new_analysis)
+        self.pydsc.dscplot.reperform_analyses.connect(
+            lambda: self.dscanalysis.update_current_analysis(self.data))
 
         self.pydsc.results.analysis_name_changed.connect(
             self.dscanalysis.change_analysis_name)
@@ -410,6 +412,7 @@ class UI_Results(QFrame):
 class UI_DSCPlot(QFrame):
     analysis_made = Signal(dict)
     canceled_analysis = Signal()
+    reperform_analyses = Signal()
 
     def __init__(self):
         QFrame.__init__(self)
@@ -469,7 +472,7 @@ class UI_DSCPlot(QFrame):
                 self.data.Tr, self.data.Heatflow1Deriv)
 
         # Re-perform all analyses
-        # TODO
+        self.reperform_analyses.emit()
 
         self.canvas.draw()
         pass

@@ -1,6 +1,7 @@
 from PySide6.QtCore import (Slot, Signal, Qt, QObject, QCoreApplication)
+from dsc import DSCData
 class DSCAnalysis(QObject):
-    update_current_analysis = Signal(dict)
+    update_current_analysis = Signal(DSCData)
     add_analysis_display = Signal(dict)
     load_analysis_display = Signal(list)
     del_analysis_display = Signal(int)
@@ -15,6 +16,18 @@ class DSCAnalysis(QObject):
 
         self.tg_analyses_num = 1
         self.peak_analyses_num = 1
+
+    def update_all_analyses(self, data : DSCData):
+        if len(ana) == 0:
+            return
+        for ana in self.analyses:
+            if ana.mode == 'tg':
+                ana['tg'] = data.tg_detect2(ana['extents'][0],
+                    ana['extents'][1])
+            elif ana.mode == 'peak':
+                ana['peak'] = data.peak_detect(ana['extents'][0],
+                    ana['extents'][1])
+        self.update_current_analysis.emit(self.current_analysis)
 
     def get_analysis_num(self, mode):
         ret = 0
@@ -50,7 +63,6 @@ class DSCAnalysis(QObject):
         if len(ana) > 0:
             self.current_analysis = self.analyses[0]
             self.current_analysis_index = 0
-            self.load_analysis_display.emit(ana)
             self.update_current_analysis.emit(self.current_analysis)
 
     # Deletes currently selected analysis
