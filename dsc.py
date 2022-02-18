@@ -5,7 +5,6 @@ import re
 from util import get_encoding_type, print_summary_stats, si_intersect, \
     filter_control
 
-SAVGOL_WINDOW_LENGTH = 5
 SAVGOL_POLYORDER = 3
 
 np.seterr(divide='ignore', invalid='ignore')
@@ -17,8 +16,11 @@ class DSCData:
         self.t = []
         self.Heatflow = []
         self.Tr = []
-        self.name = ""
-        self.notes = ""
+        self.name = ''
+        self.notes = ''
+
+        self.savgol_1_window = SAVGOL_POLYORDER + 1
+        self.savgol_1_enabled = False
 
     # Tr space
     def get_tr_selection_mask(self, data_click_x, data_release_x):
@@ -31,15 +33,12 @@ class DSCData:
     def deriv_of(self, idx):
         return self.Heatflow1Deriv[idx]
 
-    def deriv2_of(self, idx):
-        return self.Heatflow2Deriv[idx]
-
     def offset_of(self, idx, deriv):
         return (self.Heatflow[idx] - deriv*self.np_Tr[idx])
 
     def to_dict(self):
-        return {"Index": self.Index, "t": self.t, "Heatflow": self.Heatflow, 
-                "Tr": self.Tr, "name": self.name, "notes": self.notes}
+        return {'Index': self.Index, 't': self.t, 'Heatflow': self.Heatflow, 
+                'Tr': self.Tr, 'name': self.name, 'notes': self.notes}
 
     # Prepare for extra analysis (Tg, peak/enthalpy)
     def prepare_extra(self):
@@ -50,8 +49,9 @@ class DSCData:
 
         self.Heatflow1Deriv = np.gradient(
             self.np_Heatflow, self.np_Tr)
-        self.Heatflow2Deriv = np.gradient(
-            self.Heatflow1Deriv, self.np_Tr)
+        if self.savgol_1_enabled:
+            self.Heatflow1Deriv = ss.savgol_filter(self.Heatflow1Deriv,
+                self.savgol_1_window, SAVGOL_POLYORDER)
 
     def __getitem__(self, index):
         return (self.Tr[index], self.Heatflow[index])
@@ -121,22 +121,13 @@ class DSCData:
         enthalp_area = np.trapz(enthalp_intg, enthalp_t)
 
         return {
-            "peak_idx": int(peak_idx),
-            "onset_Tr_idx": int(self.baseline_intersection2(
+            'peak_idx': int(peak_idx),
+            'onset_Tr_idx': int(self.baseline_intersection2(
                 l_extrap_idx, baseline_slope, baseline_offset)),
-            "offset_Tr_idx": int(self.baseline_intersection2(
+            'offset_Tr_idx': int(self.baseline_intersection2(
                 r_extrap_idx, baseline_slope, baseline_offset)),
-            "enthalp_area": float(enthalp_area)
+            'enthalp_area': float(enthalp_area)
             }
-
-    # Returns index with lowest absolute value of 2nd deriv. in region
-    def inflection_idx(self, start_tr, end_tr):
-        tr_mask = (self.np_Tr > start_tr) & (self.np_Tr < end_tr)
-        if self.Heatflow2Deriv[tr_mask].size == 0:
-            return None
-        else:
-            return self.np_Index[tr_mask][
-                np.argmin(np.abs(self.Heatflow2Deriv[tr_mask]))]
 
     # Returns an index of a point closest to the x-coordinate of the
     # intersection of the 1st derivative of point specified by point_idx and a
@@ -164,11 +155,11 @@ class DSCData:
         sel_mask = self.get_tr_selection_mask(x1, x2)
 
         ### Find Tg
-        # Point of maximum absolute first derivative (i.e. "inflection
-        # temperature")
+        # Point of maximum absolute first derivative (i.e. 'inflection
+        # temperature')
         tg_idx = self.np_Index[sel_mask][
             np.argmax(np.abs(self.Heatflow1Deriv[sel_mask]))]
-        return {"tig_idx": tg_idx}
+        return {'tig_idx': tg_idx}
 
     # tg_index
     def tg_detect2(self, x1, x2):
@@ -185,7 +176,7 @@ class DSCData:
         r_offset = self.offset_of(r_idx, r_deriv)
 
         # Inflection (point of greatest slope)
-        tig_idx = self.tg_detect1(x1, x2)["tig_idx"]
+        tig_idx = self.tg_detect1(x1, x2)['tig_idx']
 
         tig_deriv = self.Heatflow1Deriv[tig_idx]
         tig_offset = self.offset_of(tig_idx, tig_deriv)
@@ -203,9 +194,9 @@ class DSCData:
             [tf_pt[1],te_pt[1]])))
 
         return {
-            "tig_idx": int(tig_idx),
-            "tf_idx": int(tf_idx),
-            "tm_idx": int(tm_idx)
+            'tig_idx': int(tig_idx),
+            'tf_idx': int(tf_idx),
+            'tm_idx': int(tm_idx)
         }
         
 #################### Text parsing ####################
@@ -225,6 +216,6 @@ def parse_tabulated_txt(text):
         ret.Tr.append(float(m.group(4)))
         stored_m = m
     if not len(ret.Index):
-        raise Exception("No rows parsed; possibly wrong file type")
+        raise Exception('No rows parsed; possibly wrong file type')
     ret.notes = filter_control(text[stored_m.end():])
     return ret

@@ -12,6 +12,7 @@ class DSCAnalysis(QObject):
         self.current_analysis = None
         self.current_analysis_index = None
         self.new_analysis_mode = False
+
         self.tg_analyses_num = 1
         self.peak_analyses_num = 1
 

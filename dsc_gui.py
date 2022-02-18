@@ -6,7 +6,8 @@ import zlib
 from PySide6.QtWidgets import (QApplication, QDialog, QPushButton, QMainWindow,
         QWidget, QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem,
         QListWidget, QListWidgetItem, QPlainTextEdit, QLineEdit, QFileDialog,
-        QLabel, QFrame, QLayout, QSizePolicy, QHeaderView, QAbstractItemView)
+        QLabel, QFrame, QLayout, QSizePolicy, QHeaderView, QAbstractItemView,
+        QSlider, QCheckBox)
 from PySide6.QtCore import (Slot, Signal, Qt, QObject, QCoreApplication)
 from PySide6.QtGui import (QAction, QPalette, QColor)
 from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg,
@@ -14,7 +15,7 @@ from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg,
 from matplotlib.figure import Figure
 import matplotlib.widgets as mwidgets
 
-from dsc import parse_tabulated_txt, DSCData
+from dsc import parse_tabulated_txt, DSCData, SAVGOL_POLYORDER
 from util import get_encoding_type
 from dsc_analysis import DSCAnalysis
 from dsc_serialize import store_dsc, restore_dsc
@@ -48,6 +49,38 @@ class ConfirmDialog(QDialog):
 
         self.yes_button.clicked.connect(self.accept)
         self.no_button.clicked.connect(self.reject)
+
+class PerformSmoothingDialog(QDialog):
+    smoothing_changed = Signal(bool, int)
+
+    def __init__(self):
+        QDialog.__init__(self)
+        self.layout = QHBoxLayout(self)
+
+        self.checkbox = QCheckBox('Savitzky-Golay Filtering (1st Derivative)'
+            ' - Window Size:')
+        self.slider = QSlider()
+        self.slider.setMinimum(SAVGOL_POLYORDER + 1)
+        self.slider.setMaximum(SAVGOL_POLYORDER + 7)
+        self.slider.setSingleStep(1)
+        self.slider.setOrientation(Qt.Horizontal)
+        self.slider_label = QLabel(str(self.slider.value()))
+
+        self.slider.valueChanged.connect(self.update_slider_value)
+        self.checkbox.stateChanged.connect(self.update_checkbox_value)
+
+        self.layout.addWidget(self.checkbox)
+        self.layout.addWidget(self.slider)
+        self.layout.addWidget(self.slider_label)
+
+    def update_slider_value(self, value : int):
+        self.slider_label.setText(str(value))
+        smoothing_changed.emit(self.checkbox.isChecked(),
+            str(self.slider.value()))
+
+    def update_checkbox_value(self, value : int):
+        smoothing_changed.emit(self.checkbox.isChecked(),
+            str(self.slider.value()))
 
 ui_log = LoggingHandle()
 def log_ui(msg : str):
@@ -114,9 +147,20 @@ class UI_MainWindow(QMainWindow):
         esc_action.triggered.connect(self.cancel_analysis)
         self.analysis_menu.addAction(esc_action)
 
+        togg_1deriv_action = QAction('Toggle 1st Derivative Plot', self)
+        togg_1deriv_action.setShortcut('Ctrl+1')
+        self.analysis_menu.addAction(togg_1deriv_action)
+
+        smooth_action = QAction('Smoothing Dialog', self)
+        smooth_action.setShortcut('Ctrl+2')
+        smooth_action.triggered.connect(self.smooth_dialog)
+        self.analysis_menu.addAction(smooth_action)
+
         ### Central Widget
         self.pydsc = UI_PyDSC()
         self.setCentralWidget(self.pydsc)
+
+        togg_1deriv_action.triggered.connect(self.pydsc.dscplot.toggle_1deriv)
 
         self.loaded_data.connect(self.pydsc.dscplot.load_data)
         self.loaded_data.connect(self.pydsc.results.load_data)
@@ -170,6 +214,11 @@ class UI_MainWindow(QMainWindow):
 
     def cancel_analysis(self, s):
         self.pydsc.dscplot.update_selector(None)
+
+    def smooth_dialog(self, s):
+        dialog = PerformSmoothingDialog()
+        dialog.smoothing_changed.connect(self.pydsc.dscplot.update_smoothing)
+        dialog.exec()
 
     def save_file(self, s):
         if self.data is None:
@@ -379,6 +428,7 @@ class UI_DSCPlot(QFrame):
         self.peak_analyses_num = 1
 
         self.plot_lines = None
+        self.plot1deriv_lines = None
         self.overlay_lines = []
 
         self.mode = 'tg'
@@ -402,6 +452,39 @@ class UI_DSCPlot(QFrame):
         self.layout.addWidget(self.plot_label)
         self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
+
+    def update_smoothing(active : bool, window : int):
+        if self.data is None:
+            return
+        self.data.savgol_1_enabled = active
+        self.data.savgol_1_window = window
+        self.data.prepare_extra()
+
+        # Replot all lines
+        plot1deriv = True if plot1deriv_lines else False
+        clear_graph()
+        self.ax.plot(self.data.Tr, self.data.Heatflow)
+        if plot1deriv:
+            self.plot1deriv_lines = self.ax.plot(
+                self.data.Tr, self.data.Heatflow1Deriv)
+
+        # Re-perform all analyses
+        # TODO
+
+        self.canvas.draw()
+        pass
+
+    def toggle_1deriv(self):
+        if self.data is None:
+            return
+        if self.plot1deriv_lines is None:
+            self.plot1deriv_lines = self.ax.plot(
+                self.data.Tr, self.data.Heatflow1Deriv)
+            self.canvas.draw()
+        else:
+            self.ax.lines.remove(self.plot1deriv_lines)
+            self.plot1deriv_lines = None
+            self.canvas.draw()
 
     # Sets mode but does not position selector
     def new_selector(self, mode : str):
@@ -485,6 +568,10 @@ class UI_DSCPlot(QFrame):
     def clear_graph(self):
         if self.plot_lines:
             self.ax.lines.remove(self.plot_lines)
+            self.plot_lines = None
+        if self.plot1deriv_lines:
+            self.ax.lines.remove(self.plot1deriv_lines)
+            self.plot1deriv_lines = None
         self.clear_overlay_lines()
 
     def load_data(self, data : DSCData):
