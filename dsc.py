@@ -96,12 +96,20 @@ class DSCData:
         # maximum
         l_region = (self.np_Tr < peak_tr) & (self.np_Tr > self.np_Tr[l_idx])
         r_region = (self.np_Tr > peak_tr) & (self.np_Tr < self.np_Tr[r_idx])
-        l_extrap_idx = \
-            self.np_Index[l_region][
-                np.argmax(np.abs(self.Heatflow1Deriv[l_region]))]
-        r_extrap_idx = \
-            self.np_Index[r_region][
-                np.argmax(np.abs(self.Heatflow1Deriv[r_region]))]
+        if self.np_Index[l_region].size == 0:
+            l_extrap_idx = l_idx
+        else:
+            l_extrap_idx = \
+                self.np_Index[l_region][
+                    np.argmax(np.abs(self.Heatflow1Deriv[l_region]))]
+        if self.np_Index[r_region].size == 0:
+            r_extrap_idx = r_idx
+        else:
+            r_extrap_idx = \
+                self.np_Index[r_region][
+                    np.argmax(np.abs(self.Heatflow1Deriv[r_region]))]
+
+        ### TODO Find enthalpy based on trapezoidal integration
 
         return {
             "peak_idx": int(peak_idx),

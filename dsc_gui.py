@@ -3,11 +3,10 @@ import os.path
 import datetime
 import zlib
 
-from PySide6.QtWidgets import (QApplication, QPushButton, QMainWindow, QWidget,
-        QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem, QListWidget,
-        QListWidgetItem, QPlainTextEdit, QLineEdit, QFileDialog, QLabel,
-        QFrame, QLayout, QSizePolicy, QHeaderView,
-        QAbstractItemView)
+from PySide6.QtWidgets import (QApplication, QDialog, QPushButton, QMainWindow,
+        QWidget, QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem,
+        QListWidget, QListWidgetItem, QPlainTextEdit, QLineEdit, QFileDialog,
+        QLabel, QFrame, QLayout, QSizePolicy, QHeaderView, QAbstractItemView)
 from PySide6.QtCore import (Slot, Signal, Qt, QObject, QCoreApplication)
 from PySide6.QtGui import (QAction, QPalette, QColor)
 from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg,
@@ -20,6 +19,39 @@ from util import get_encoding_type
 from dsc_analysis import DSCAnalysis
 from dsc_serialize import store_dsc, restore_dsc
 
+class LoggingHandle(QObject):
+    log_signal = Signal(str)
+    def __init__(self):
+        QObject.__init__(self)
+
+    @Slot(str)
+    def log_slot(self, msg : str):
+        self.log_signal.emit(msg)
+
+class ConfirmDialog(QDialog):
+    def __init__(self, msg):
+        QDialog.__init__(self)
+        self.vlayout = QVBoxLayout(self)
+
+        self.buttons_frame = QFrame()
+        self.hlayout = QHBoxLayout(self.buttons_frame)
+        self.yes_button = QPushButton("Yes")
+        self.no_button = QPushButton("No")
+
+        self.hlayout.addWidget(self.yes_button)
+        self.hlayout.addWidget(self.no_button)
+
+        self.dialog_msg = QLabel(msg)
+
+        self.vlayout.addWidget(self.dialog_msg)
+        self.vlayout.addWidget(self.buttons_frame)
+
+        self.yes_button.clicked.connect(self.accept)
+        self.no_button.clicked.connect(self.reject)
+
+ui_log = LoggingHandle()
+def log_ui(msg : str):
+    ui_log.log_slot(msg)
 
 # Main Window
 class UI_MainWindow(QMainWindow):
@@ -77,10 +109,10 @@ class UI_MainWindow(QMainWindow):
         del_action.triggered.connect(self.del_analysis)
         self.analysis_menu.addAction(del_action)
 
-        esc_action = QAction('Escape Selection', self)
+        esc_action = QAction('Escape Analysis', self)
         esc_action.setShortcut('Escape')
-        esc_action.triggered.connect(lambda: \
-        self.analysis_menu.addAction(esc_action))
+        esc_action.triggered.connect(self.cancel_analysis)
+        self.analysis_menu.addAction(esc_action)
 
         ### Central Widget
         self.pydsc = UI_PyDSC()
@@ -136,9 +168,12 @@ class UI_MainWindow(QMainWindow):
         self.pydsc.dscplot.new_selector('peak')
         self.new_analysis.emit()
 
+    def cancel_analysis(self, s):
+        self.pydsc.dscplot.update_selector(None)
+
     def save_file(self, s):
         if self.data is None:
-            # XXX place for error?
+            log_ui('Save attempted with no data loaded')
             return
         save_dialog = QFileDialog()
         save_dialog.setFileMode(QFileDialog.AnyFile)
@@ -158,7 +193,12 @@ class UI_MainWindow(QMainWindow):
                 f.write(data_to_write)
 
     def open_file(self, s):
-        # TODO prompt save
+        if self.active_file:
+            confirm_dialog = ConfirmDialog(
+                "Opening a new file will overwrite current data. Proceed?")
+            res = confirm_dialog.exec()
+            if res == QDialog.Rejected:
+                return
         file_dialog = QFileDialog()
         file_dialog.setFileMode(QFileDialog.ExistingFile)
         file_dialog.setNameFilter('Tabulated text (*.txt);'
@@ -396,6 +436,7 @@ class UI_DSCPlot(QFrame):
                     'mode':self.mode, 'extents':extents, 'peak':pk})
         except Exception as e:
             self.canceled_analysis.emit()
+            log_ui('Selection failed: '+str(e))
             raise
 
     def update_selector_props(self):
@@ -484,6 +525,7 @@ class UI_ProjectInfo(QFrame):
         self.update_status('PyDSC loaded')
 
         self.note_edit.textChanged.connect(self.notes_changed_slot)
+        ui_log.log_signal.connect(self.update_status)
 
     @Slot()
     def notes_changed_slot(self):

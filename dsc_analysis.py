@@ -77,6 +77,7 @@ class DSCAnalysis(QObject):
 
     @Slot(int)
     def switch_analysis(self, index : int):
+        #print(index)
         if index == -1:
             self.current_analysis_index = None
             self.current_analysis = None
