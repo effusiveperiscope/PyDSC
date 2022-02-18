@@ -231,12 +231,13 @@ class UI_MainWindow(QMainWindow):
         save_dialog.setViewMode(QFileDialog.Detail)
         save_dialog.setNameFilter('PyDSC Format (*.pdsc)')
 
+        save_files = []
         if save_dialog.exec():
-            self.save_files = save_dialog.selectedFiles()
+            save_files = save_dialog.selectedFiles()
 
-        if len(self.save_files):
+        if len(save_files):
             save_file_name = self.save_files[0]
-            if not self.save_files[0].endswith('.pdsc'):
+            if not save_files[0].endswith('.pdsc'):
                 save_file_name = save_file_name+'.pdsc'
             data_to_write = zlib.compress(store_dsc(self.data,
                 self.dscanalysis).encode())
