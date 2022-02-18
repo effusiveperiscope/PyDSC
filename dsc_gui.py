@@ -355,6 +355,7 @@ class UI_Results(QFrame):
             ret['Onset heatflow [mW]'] = self.data[pk['onset_Tr_idx']][1]
             ret['Offset temperature [C]'] = self.data[pk['offset_Tr_idx']][0]
             ret['Offset heatflow [mW]'] = self.data[pk['offset_Tr_idx']][1]
+            ret['Enthalpy [mW]'] = pk['enthalp_area']
         return ret
 
 class UI_DSCPlot(QFrame):

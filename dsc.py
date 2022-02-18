@@ -110,13 +110,23 @@ class DSCData:
                     np.argmax(np.abs(self.Heatflow1Deriv[r_region]))]
 
         ### TODO Find enthalpy based on trapezoidal integration
+        t_baseline_slope = (self.np_Heatflow[l_idx] - self.np_Heatflow[r_idx])\
+         / (self.np_t[l_idx] - self.np_t[r_idx])
+        t_baseline_offset = self.np_Heatflow[l_idx] - \
+            t_baseline_slope*self.np_t[l_idx]
+
+        enthalp_t = self.np_t[sel_mask]
+        enthalp_base = enthalp_t * t_baseline_slope + t_baseline_offset
+        enthalp_intg = self.np_Heatflow[sel_mask] - enthalp_base
+        enthalp_area = np.trapz(enthalp_intg, enthalp_t)
 
         return {
             "peak_idx": int(peak_idx),
             "onset_Tr_idx": int(self.baseline_intersection2(
                 l_extrap_idx, baseline_slope, baseline_offset)),
             "offset_Tr_idx": int(self.baseline_intersection2(
-                r_extrap_idx, baseline_slope, baseline_offset))
+                r_extrap_idx, baseline_slope, baseline_offset)),
+            "enthalp_area": float(enthalp_area)
             }
 
     # Returns index with lowest absolute value of 2nd deriv. in region
