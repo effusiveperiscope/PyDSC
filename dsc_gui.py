@@ -1,11 +1,14 @@
 import sys
 import os.path
 import datetime
+import zlib
 
 from PySide6.QtWidgets import (QApplication, QPushButton, QMainWindow, QWidget,
-        QHBoxLayout, QVBoxLayout, QTableWidget, QListWidget, QPlainTextEdit,
-        QLineEdit, QFileDialog, QLabel, QFrame, QLayout, QSizePolicy)
-from PySide6.QtCore import (Slot, Signal, Qt)
+        QHBoxLayout, QVBoxLayout, QTableWidget, QTableWidgetItem, QListWidget,
+        QListWidgetItem, QPlainTextEdit, QLineEdit, QFileDialog, QLabel,
+        QFrame, QLayout, QSizePolicy, QHeaderView,
+        QAbstractItemView)
+from PySide6.QtCore import (Slot, Signal, Qt, QObject, QCoreApplication)
 from PySide6.QtGui import (QAction, QPalette, QColor)
 from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg,
     NavigationToolbar2QT as NavigationToolbar)
@@ -14,79 +17,152 @@ import matplotlib.widgets as mwidgets
 
 from dsc import parse_tabulated_txt, DSCData
 from util import get_encoding_type
+from dsc_analysis import DSCAnalysis
+from dsc_serialize import store_dsc, restore_dsc
+
 
 # Main Window
 class UI_MainWindow(QMainWindow):
-    loaded_tab = Signal(DSCData)
+    loaded_data = Signal(DSCData)
     changed_name = Signal(str)
+    new_analysis = Signal()
+    del_analysis = Signal()
 
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setWindowTitle("PyDSC")
+        self.setWindowTitle('PyDSC')
         #self.setWindowIcon()
 
         self.active_files = []
-        self.active_file_name = ""
+        self.active_file_name = ''
         self.active_file = None
         self.data = None
+        self.dscanalysis = DSCAnalysis()
 
         # Menu
         self.menu = self.menuBar()
-        self.file_menu = self.menu.addMenu("File")
+        self.file_menu = self.menu.addMenu('File')
+        self.analysis_menu = self.menu.addMenu('Analysis')
         self.dsc_button = QPushButton()
         self.tg_button = QPushButton()
 
         ### Actions
-        open_action = QAction("Open", self)
-        open_action.setShortcut("Ctrl+O")
+        open_action = QAction('Open', self)
+        open_action.setShortcut('Ctrl+O')
         open_action.triggered.connect(self.open_file)
         self.file_menu.addAction(open_action)
 
-        save_action = QAction("Save", self)
-        save_action.setShortcut("Ctrl+S")
+        save_action = QAction('Save', self)
+        save_action.setShortcut('Ctrl+S')
         save_action.triggered.connect(self.save_file)
         self.file_menu.addAction(save_action)
 
-        exit_action = QAction("Exit", self)
-        exit_action.setShortcut("Ctrl+Q")
+        exit_action = QAction('Exit', self)
+        exit_action.setShortcut('Ctrl+Q')
         exit_action.triggered.connect(self.exit_app)
         self.file_menu.addAction(exit_action)
 
-        new_tg_action = QAction("New Tg Analysis", self)
-        new_tg_action.setShortcut("Ctrl+T")
+        new_tg_action = QAction('New Tg Analysis', self)
+        new_tg_action.setShortcut('Ctrl+T')
         new_tg_action.triggered.connect(self.new_tg_analysis)
+        self.analysis_menu.addAction(new_tg_action)
 
-        new_peak_action = QAction("New Peak Analysis", self)
-        new_peak_action.setShortcut("Ctrl+V")
+        new_peak_action = QAction('New Peak Analysis', self)
+        new_peak_action.setShortcut('Ctrl+V')
         new_peak_action.triggered.connect(self.new_peak_analysis)
+        self.analysis_menu.addAction(new_peak_action)
 
-        del_action = QAction("Delete Selected Analysis", self)
-        del_action.setShortcut("Delete")
+        del_action = QAction('Delete Selected Analysis', self)
+        del_action.setShortcut('Delete')
+        del_action.triggered.connect(self.del_analysis)
+        self.analysis_menu.addAction(del_action)
+
+        esc_action = QAction('Escape Selection', self)
+        esc_action.setShortcut('Escape')
+        esc_action.triggered.connect(lambda: \
+        self.analysis_menu.addAction(esc_action))
 
         ### Central Widget
         self.pydsc = UI_PyDSC()
         self.setCentralWidget(self.pydsc)
 
-        self.loaded_tab.connect(self.pydsc.dscplot.plot)
-        self.loaded_tab.connect(self.pydsc.projectinfo.receive_dsc)
+        self.loaded_data.connect(self.pydsc.dscplot.load_data)
+        self.loaded_data.connect(self.pydsc.results.load_data)
+        self.loaded_data.connect(self.pydsc.projectinfo.receive_dsc)
 
-        # drag and drop
+        self.new_analysis.connect(self.dscanalysis.prepare_new_analysis)
+        self.del_analysis.connect(self.dscanalysis.del_analysis)
+
+        self.pydsc.dscplot.analysis_made.connect(
+            self.dscanalysis.receive_analysis)
+        self.pydsc.dscplot.canceled_analysis.connect(
+            self.dscanalysis.cancel_new_analysis)
+
+        self.pydsc.results.analysis_name_changed.connect(
+            self.dscanalysis.change_analysis_name)
+        self.pydsc.projectinfo.notes_changed.connect(
+            self.notes_changed)
+
+        self.dscanalysis.update_current_analysis.connect(
+            self.pydsc.dscplot.display_analysis)
+        self.dscanalysis.update_current_analysis.connect(
+            self.pydsc.dscplot.update_selector)
+        self.dscanalysis.update_current_analysis.connect(
+            self.pydsc.results.receive_analysis)
+        self.pydsc.analyses.analysis_list.currentRowChanged.connect(
+            self.dscanalysis.switch_analysis)
+        self.dscanalysis.add_analysis_display.connect(
+            self.pydsc.analyses.add_analysis_display)
+        self.dscanalysis.del_analysis_display.connect(
+            self.pydsc.analyses.del_analysis_display)
+        self.dscanalysis.send_change_analysis_name.connect(
+            self.pydsc.analyses.change_analysis_name)
+        self.dscanalysis.load_analysis_display.connect(
+            self.pydsc.analyses.load_analysis_display)
+
+        # XXX drag and drop?
         # self.setAcceptDrops(True)
 
+    def notes_changed(self, text : str):
+        if self.data is None:
+            return
+        self.data.notes = text
+
     def new_tg_analysis(self, s):
-        pass
+        self.pydsc.dscplot.new_selector('tg')
+        self.new_analysis.emit()
 
     def new_peak_analysis(self, s):
-        pass
+        self.pydsc.dscplot.new_selector('peak')
+        self.new_analysis.emit()
 
     def save_file(self, s):
-        pass
+        if self.data is None:
+            # XXX place for error?
+            return
+        save_dialog = QFileDialog()
+        save_dialog.setFileMode(QFileDialog.AnyFile)
+        save_dialog.setViewMode(QFileDialog.Detail)
+        save_dialog.setNameFilter('PyDSC Format (*.pdsc)')
+
+        if save_dialog.exec():
+            self.save_files = save_dialog.selectedFiles()
+
+        if len(self.save_files):
+            save_file_name = self.save_files[0]
+            if not self.save_files[0].endswith('.pdsc'):
+                save_file_name = save_file_name+'.pdsc'
+            data_to_write = zlib.compress(store_dsc(self.data,
+                self.dscanalysis).encode())
+            with open(save_file_name, 'wb') as f:
+                f.write(data_to_write)
 
     def open_file(self, s):
         # TODO prompt save
         file_dialog = QFileDialog()
         file_dialog.setFileMode(QFileDialog.ExistingFile)
-        file_dialog.setNameFilter("Tabulated text (*.txt)")
+        file_dialog.setNameFilter('Tabulated text (*.txt);'
+            ';PyDSC file (*.pdsc)')
         file_dialog.setViewMode(QFileDialog.Detail)
 
         if file_dialog.exec():
@@ -94,60 +170,157 @@ class UI_MainWindow(QMainWindow):
 
         if len(self.active_files):
             file_to_open = self.active_files[0]
-            self.active_file_name = file_to_open
-            self.active_file = open(file_to_open,
-                encoding = get_encoding_type(file_to_open))
-            text = self.active_file.read()
 
-            self.data = parse_tabulated_txt(text)
-            self.data.name = os.path.basename(self.active_file_name)
+            if file_to_open.endswith('.txt'):
+                self.read_txt(file_to_open)
+            elif file_to_open.endswith('.pdsc'):
+                self.read_pdsc(file_to_open)
 
-            self.loaded_tab.emit(self.data)
+    def read_txt(self, file_to_open : str):
+        self.active_file = open(file_to_open,
+            encoding = get_encoding_type(file_to_open))
+        text = self.active_file.read()
+        self.active_file_name = file_to_open
+
+        self.data = parse_tabulated_txt(text)
+        self.data.name = os.path.splitext(\
+            os.path.basename(self.active_file_name))[0]
+
+        self.loaded_data.emit(self.data)
+
+    def read_pdsc(self, file_to_open : str):
+        self.active_file = open(file_to_open, 'rb')
+        read_bin = zlib.decompress(self.active_file.read())
+        read_data, read_analysis = restore_dsc(read_bin)
+        self.active_file_name = file_to_open
+
+        self.data = read_data
+
+        self.loaded_data.emit(self.data)
+        self.dscanalysis.load_analysis(read_analysis)
 
     def exit_app(self, s):
         QApplication.quit()
 
 class UI_Analyses(QFrame):
+
     def __init__(self):
         QFrame.__init__(self)
         self.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.layout = QVBoxLayout(self)
 
-        # Setup widgets
         self.analysis_list = QListWidget()
+        self.analysis_list.setSelectionMode(QAbstractItemView.SingleSelection)
 
-        # Layout widgets
-        self.layout.addWidget(QLabel("Analysis"))
+        self.layout.addWidget(QLabel('Analysis'))
         self.layout.addWidget(self.analysis_list)
+
+    @Slot(int, str)
+    def change_analysis_name(self, row : int, name : str):
+        if self.analysis_list.item(row) is None:
+            return
+        self.analysis_list.item(row).setText(name)
+
+    @Slot()
+    def clear_analysis_display(self):
+        self.analysis_list.clear()
+
+    @Slot(list)
+    def load_analysis_display(self, ana : list):
+        self.clear_analysis_display()
+        for a in ana:
+            self.add_analysis_display(a)
+
+    @Slot(dict)
+    def add_analysis_display(self, ana : dict):
+        item = QListWidgetItem(ana['name'])
+        item.setFlags(~Qt.ItemIsEditable)
+        self.analysis_list.addItem(item)
+
+    @Slot(int)
+    def del_analysis_display(self, row : int):
+        self.analysis_list.takeItem(row)
 
 # Read-only results for current analysis item
 class UI_Results(QFrame):
+    analysis_name_changed = Signal(str)
+
     def __init__(self):
         QFrame.__init__(self)
         self.layout = QVBoxLayout(self)
         self.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        self.data = None
+        self.editable_name_idx = None
 
         # Setup widgets
         self.table = QTableWidget()
         self.table.setColumnCount(2)
-        self.table.setVerticalHeaderLabels(["Name","Value"])
+        self.table.setVerticalHeaderLabels(['Name','Value'])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.itemChanged.connect(self.handle_name_change)
 
         # Layout widgets
-        self.layout.addWidget(QLabel("Details"))
+        self.layout.addWidget(QLabel('Details'))
         self.layout.addWidget(self.table)
 
+    def load_data(self, data : DSCData):
+        self.data = data
+
+    def handle_name_change(self, item):
+        if item.row() == self.editable_name_idx and item.column() == 1:
+            self.analysis_name_changed.emit(item.text())
+
     @Slot(dict)
-    def update_results(self, data):
+    def receive_analysis(self, ana):
         self.table.clearContents()
-        items_idx = 0
-        for k,v in data.items():
-            self.table.insertRow(items_idx)
-            self.table.setItem(items_idx, 0, QTableWidgetItem(str(k)))
-            self.table.setItem(items_idx, 1, QTableWidgetItem(str(v)))
-            items_idx += 1
-        pass
+        if ana is None:
+            return
+        row_idx = 0
+        ref_ana = self.reformat_analysis(ana)
+        self.table.setRowCount(len(ref_ana.items()))
+        for k,v in ref_ana.items():
+            l_item = QTableWidgetItem(str(k))
+            r_item = QTableWidgetItem(str(v))
+            l_item.setFlags(~Qt.ItemIsEditable)
+            r_item.setFlags(~Qt.ItemIsEditable)
+            if (k == 'Name'): # Only name is editable
+                r_item.setFlags(Qt.ItemIsEditable | Qt.ItemIsEnabled)
+                self.editable_name_idx = row_idx
+            self.table.setItem(row_idx, 0, l_item)
+            self.table.setItem(row_idx, 1, r_item)
+            row_idx += 1
+
+    def reformat_analysis(self, ana : dict):
+        ret = {}
+        ret['Name'] = ana['name']
+        ret['Mode'] = 'Glass transition' if ana['mode'] == 'tg' else \
+               'Peak analysis'
+        if ana['mode'] == 'tg':
+            ret['Mode'] = 'Glass transition'
+            tg = ana['tg']
+            ret['Inflection temperature [C]'] = self.data[tg['tig_idx']][0]
+            ret['Inflection heatflow [mW]'] = self.data[tg['tig_idx']][1]
+            ret['Extrapolated onset temperature [C]'] = \
+                    self.data[tg['tf_idx']][0]
+            ret['Extrapolated onset heatflow [mW]'] = \
+                    self.data[tg['tf_idx']][1]
+            ret['Midpoint temperature [C]'] = self.data[tg['tm_idx']][0]
+            ret['Midpoint heatflow [mW]'] = self.data[tg['tm_idx']][1]
+        elif ana['mode'] == 'peak':
+            pk = ana['peak']
+            ret['Mode'] = 'Peak analysis'
+            ret['Peak temperature [C]'] = self.data[pk['peak_idx']][0]
+            ret['Peak heatflow [mW]'] = self.data[pk['peak_idx']][1]
+            ret['Onset temperature [C]'] = self.data[pk['onset_Tr_idx']][0]
+            ret['Onset heatflow [mW]'] = self.data[pk['onset_Tr_idx']][1]
+            ret['Offset temperature [C]'] = self.data[pk['offset_Tr_idx']][0]
+            ret['Offset heatflow [mW]'] = self.data[pk['offset_Tr_idx']][1]
+        return ret
 
 class UI_DSCPlot(QFrame):
+    analysis_made = Signal(dict)
+    canceled_analysis = Signal()
+
     def __init__(self):
         QFrame.__init__(self)
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
@@ -156,29 +329,133 @@ class UI_DSCPlot(QFrame):
         self.ax = self.fig.add_subplot()
         self.ax.set_xlabel('Tr')
         self.ax.set_ylabel('Heatflow')
+
         self.layout = QVBoxLayout(self)
 
-        ### XXX Test
-        self.selector = mwidgets.RectangleSelector(self.ax,
-            lambda eclick, erelease: print(eclick, erelease),
-            minspanx = 0.1, minspany = 0.1, useblit = True,
-            props={'facecolor':'blue', 'alpha':0.1}, interactive=True)
+        self.data = None
+
+        self.tg_analyses_num = 1
+        self.peak_analyses_num = 1
+
+        self.plot_lines = None
+        self.overlay_lines = []
+
+        self.mode = 'tg'
+
+        self.selector = mwidgets.RectangleSelector(self.ax, self.selector_hook,
+            useblit = True, interactive=True)
+        self.selector.set_active(False) # Selector is inactive by default
+        self.update_selector_props()
 
         # Setup widgets
         self.canvas = FigureCanvasQTAgg(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, self)
+        self.plot_label = QLabel('Plot')
+
+        self.plot_label.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+        self.canvas.mpl_connect('motion_notify_event', self.motion_notify_hook)
 
         # Layout widgets
-        self.layout.addWidget(QLabel("Plot"))
+        self.layout.addWidget(self.plot_label)
         self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
 
-    def plot(self, data : DSCData):
-        self.ax.plot(data.Tr, data.Heatflow)
+    # Sets mode but does not position selector
+    def new_selector(self, mode : str):
+        self.mode = mode
+        self.selector.set_active(True)
+
+    # Sets mode and positions selector according to extents
+    def update_selector(self, ana : dict):
+        if ana is None:
+            self.mode = None
+            self.selector.set_active(False)
+            self.selector.set_visible(False)
+            self.canvas.draw()
+            return
+        self.selector.extents = ana['extents']
+        self.mode = ana['mode']
+        self.selector.set_active(True)
+        self.selector.set_visible(True)
         self.canvas.draw()
-        pass
+
+    def selector_hook(self, eclick, erelease):
+        extents = self.selector.extents
+        try:
+            if not self.data:
+                raise Exception('No data to select')
+            if self.mode == 'tg':
+                tg = self.data.tg_detect2(extents[0], extents[1])
+                self.analysis_made.emit({'name': 'Glass Transition Analysis',
+                    'mode':self.mode, 'extents':extents, 'tg':tg})
+            elif self.mode == 'peak':
+                pk = self.data.peak_detect(extents[0], extents[1])
+                self.analysis_made.emit({'name': 'Peak Analysis',
+                    'mode':self.mode, 'extents':extents, 'peak':pk})
+        except Exception as e:
+            self.canceled_analysis.emit()
+            raise
+
+    def update_selector_props(self):
+        if self.mode == 'tg':
+            self.selector.set_props(facecolor='blue', alpha=0.1)
+        elif self.mode == 'peak':
+            self.selector.set_props(facecolor='green', alpha=0.1)
+
+    def clear_overlay_lines(self):
+        for line in self.overlay_lines:
+            self.ax.lines.remove(line)
+        self.overlay_lines = []
+
+    def display_analysis(self, ana : dict):
+        self.clear_overlay_lines()
+        if ana is None:
+            return
+        if ana['mode'] == 'tg':
+            tg = ana['tg']
+            self.overlay_lines += self.ax.plot(
+                self.data[tg['tig_idx']][0],
+                self.data[tg['tig_idx']][1], 'ro')
+            self.overlay_lines += self.ax.plot(
+                self.data[tg['tf_idx']][0],
+                self.data[tg['tf_idx']][1], 'go')
+            self.overlay_lines += self.ax.plot(
+                self.data[tg['tm_idx']][0],
+                self.data[tg['tm_idx']][1], 'bo')
+        elif ana['mode'] == 'peak':
+            pk = ana['peak']
+            self.overlay_lines += self.ax.plot(
+                self.data[pk['peak_idx']][0],
+                self.data[pk['peak_idx']][1], 'ro')
+            self.overlay_lines += self.ax.plot(
+                self.data[pk['offset_Tr_idx']][0],
+                self.data[pk['offset_Tr_idx']][1], 'go')
+            self.overlay_lines += self.ax.plot(
+                self.data[pk['onset_Tr_idx']][0],
+                self.data[pk['onset_Tr_idx']][1], 'go')
+
+    def motion_notify_hook(self, event):
+        if self.selector.active: # Draw rectangle
+            self.canvas.draw()
+
+    def clear_graph(self):
+        if self.plot_lines:
+            self.ax.lines.remove(self.plot_lines)
+        self.clear_overlay_lines()
+
+    def load_data(self, data : DSCData):
+        self.clear_graph()
+
+        data.prepare_extra()
+        self.data = data
+        self.plot_obj = self.ax.plot(data.Tr, data.Heatflow)
+        self.canvas.draw()
 
 class UI_ProjectInfo(QFrame):
+    notes_changed = Signal(str)
+
     def __init__(self):
         QFrame.__init__(self)
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
@@ -186,38 +463,44 @@ class UI_ProjectInfo(QFrame):
         self.layout.setSizeConstraint(QLayout.SetMinimumSize)
 
         # Setup widgets
-        self.open_name = QLabel("")
+        self.open_name = QLabel('')
         self.open_name.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.note_edit = QPlainTextEdit()
         self.note_edit.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        self.status_bar = QLabel("")
+        self.status_bar = QLabel('')
         self.status_bar.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         self.status_bar.setWordWrap(True)
         self.status_bar.setSizePolicy(
             QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         # Layout widgets
-        self.layout.addWidget(QLabel("Project Info"))
-        self.layout.addWidget(QLabel("Name"))
+        self.layout.addWidget(QLabel('Project Info'))
+        self.layout.addWidget(QLabel('Name'))
         self.layout.addWidget(self.open_name)
-        self.layout.addWidget(QLabel("Notes"))
+        self.layout.addWidget(QLabel('Notes'))
         self.layout.addWidget(self.note_edit)
-        self.layout.addWidget(QLabel("Status"))
+        self.layout.addWidget(QLabel('Status'))
         self.layout.addWidget(self.status_bar)
-        self.update_status("PyDSC loaded")
+        self.update_status('PyDSC loaded')
+
+        self.note_edit.textChanged.connect(self.notes_changed_slot)
+
+    @Slot()
+    def notes_changed_slot(self):
+        self.notes_changed.emit(self.note_edit.toPlainText())
 
     @Slot(DSCData)
     def receive_dsc(self, data : DSCData):
         self.open_name.setText(data.name)
-        self.update_status("Loaded "+data.name)
+        self.update_status('Loaded '+data.name)
         self.note_edit.setPlainText(data.notes)
 
     @Slot(str)
     def update_status(self, msg):
-        self.status_bar.setText(msg + " | " +
+        self.status_bar.setText(msg + ' | ' +
                 datetime.datetime.now().strftime('%H:%M:%S'))
 
-# PyDSC Widget (area of most interaction)
+# Central Widget
 class UI_PyDSC(QWidget):
     def __init__(self):
         QWidget.__init__(self)
@@ -245,12 +528,10 @@ class UI_PyDSC(QWidget):
         self.layout.addWidget(self.dscplot)
         self.layout.addWidget(self.projectinfo)
 
-        ### Connect signals
-
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
     window = UI_MainWindow()
-    window.resize(1200,600)
+    window.resize(1600,800)
     window.show()
     sys.exit(app.exec())

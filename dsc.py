@@ -37,6 +37,10 @@ class DSCData:
     def offset_of(self, idx, deriv):
         return (self.Heatflow[idx] - deriv*self.np_Tr[idx])
 
+    def to_dict(self):
+        return {"Index": self.Index, "t": self.t, "Heatflow": self.Heatflow, 
+                "Tr": self.Tr, "name": self.name, "notes": self.notes}
+
     # Prepare for extra analysis (Tg, peak/enthalpy)
     def prepare_extra(self):
         self.np_Index = np.array(self.Index)
@@ -66,11 +70,11 @@ class DSCData:
         return self.np_Heatflow[l_region].mean() if l_mean > r_mean else \
             self.np_Heatflow[r_region].mean()
 
-    def peak_detect(self, eclick, erelease):
+    def peak_detect(self, x1, x2):
         ### Find peak
         # The peak(s) is/are where the derivative is closest to zero
         # i.e. the absolute value of the derivative is minimum
-        sel_mask = self.get_tr_selection_mask(eclick.xdata, erelease.xdata)
+        sel_mask = self.get_tr_selection_mask(x1, x2)
 
         idx_in_sel = self.np_Index[sel_mask]
 
@@ -100,11 +104,11 @@ class DSCData:
                 np.argmax(np.abs(self.Heatflow1Deriv[r_region]))]
 
         return {
-            "peak_idx": peak_idx,
-            "onset_Tr_idx": self.baseline_intersection2(
-                l_extrap_idx, baseline_slope, baseline_offset),
-            "offset_Tr_idx": self.baseline_intersection2(
-                r_extrap_idx, baseline_slope, baseline_offset)
+            "peak_idx": int(peak_idx),
+            "onset_Tr_idx": int(self.baseline_intersection2(
+                l_extrap_idx, baseline_slope, baseline_offset)),
+            "offset_Tr_idx": int(self.baseline_intersection2(
+                r_extrap_idx, baseline_slope, baseline_offset))
             }
 
     # Returns index with lowest absolute value of 2nd deriv. in region
@@ -138,8 +142,8 @@ class DSCData:
 
     ### ASTM E1356
     # tg_index is index of maximum first derivative in region
-    def tg_detect1(self, eclick, erelease):
-        sel_mask = self.get_tr_selection_mask(eclick.xdata, erelease.xdata)
+    def tg_detect1(self, x1, x2):
+        sel_mask = self.get_tr_selection_mask(x1, x2)
 
         ### Find Tg
         # Point of maximum absolute first derivative (i.e. "inflection
@@ -149,8 +153,8 @@ class DSCData:
         return {"tig_idx": tg_idx}
 
     # tg_index
-    def tg_detect2(self, eclick, erelease):
-        sel_mask = self.get_tr_selection_mask(eclick.xdata, erelease.xdata)
+    def tg_detect2(self, x1, x2):
+        sel_mask = self.get_tr_selection_mask(x1, x2)
         idx_in_sel = self.np_Index[sel_mask]
         l_idx = idx_in_sel[np.argmin(self.np_Tr[sel_mask])]
         r_idx = idx_in_sel[np.argmax(self.np_Tr[sel_mask])]
@@ -163,7 +167,7 @@ class DSCData:
         r_offset = self.offset_of(r_idx, r_deriv)
 
         # Inflection (point of greatest slope)
-        tig_idx = self.tg_detect1(eclick, erelease)["tig_idx"]
+        tig_idx = self.tg_detect1(x1, x2)["tig_idx"]
 
         tig_deriv = self.Heatflow1Deriv[tig_idx]
         tig_offset = self.offset_of(tig_idx, tig_deriv)
@@ -181,9 +185,9 @@ class DSCData:
             [tf_pt[1],te_pt[1]])))
 
         return {
-            "tig_idx": tig_idx,
-            "tf_idx": tf_idx,
-            "tm_idx": tm_idx
+            "tig_idx": int(tig_idx),
+            "tf_idx": int(tf_idx),
+            "tm_idx": int(tm_idx)
         }
         
 #################### Text parsing ####################

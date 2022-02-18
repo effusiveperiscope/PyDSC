@@ -33,7 +33,6 @@ def dsc_plot(data):
             data[pd["offset_Tr_idx"]][1], 'go')
         ax.plot(data[pd["onset_Tr_idx"]][0],
             data[pd["onset_Tr_idx"]][1], 'go')
-        pass
 
     def tg_selector(eclick, erelease):
         tg = data.tg_detect2(eclick, erelease)
@@ -43,7 +42,6 @@ def dsc_plot(data):
             data[tg["tf_idx"]][1], 'go')
         ax.plot(data[tg["tm_idx"]][0],
             data[tg["tm_idx"]][1], 'bo')
-        pass
 
     peak_props = dict(facecolor='blue', alpha=0.1)
     tg_props = dict(facecolor='purple', alpha=0.1)
@@ -77,11 +75,9 @@ def dsc_plot(data):
         elif event.key == 'alt+d':
             # show first derivative
             extra_lines["deriv1"] = ax.plot(data.Tr, data.Heatflow1Deriv)
-            pass
         elif event.key == 'alt+f':
             # show second derivative
             extra_lines["deriv2"] = ax.plot(data.Tr, data.Heatflow2Deriv)
-            pass
         elif event.key == 'escape':
             toggle_selector(None)
 
