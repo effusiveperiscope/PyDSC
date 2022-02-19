@@ -13,6 +13,7 @@ from PySide6.QtGui import (QAction, QPalette, QColor)
 from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg,
     NavigationToolbar2QT as NavigationToolbar)
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 import matplotlib.widgets as mwidgets
 
 from dsc import parse_tabulated_txt, DSCData, SAVGOL_POLYORDER
@@ -236,7 +237,7 @@ class UI_MainWindow(QMainWindow):
             save_files = save_dialog.selectedFiles()
 
         if len(save_files):
-            save_file_name = self.save_files[0]
+            save_file_name = save_files[0]
             if not save_files[0].endswith('.pdsc'):
                 save_file_name = save_file_name+'.pdsc'
             data_to_write = zlib.compress(store_dsc(self.data,
@@ -537,8 +538,11 @@ class UI_DSCPlot(QFrame):
 
     def clear_overlay_lines(self):
         for line in self.overlay_lines:
-            l = line.pop(0)
-            l.remove()
+            if isinstance(line, Line2D):
+                self.ax.lines.remove(line)
+            else:
+                l = line.pop(0)
+                l.remove()
         self.overlay_lines = []
 
     def display_analysis(self, ana : dict):
