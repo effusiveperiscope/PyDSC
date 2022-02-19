@@ -75,12 +75,12 @@ class PerformSmoothingDialog(QDialog):
 
     def update_slider_value(self, value : int):
         self.slider_label.setText(str(value))
-        smoothing_changed.emit(self.checkbox.isChecked(),
-            str(self.slider.value()))
+        self.smoothing_changed.emit(self.checkbox.isChecked(),
+            self.slider.value())
 
     def update_checkbox_value(self, value : int):
-        smoothing_changed.emit(self.checkbox.isChecked(),
-            str(self.slider.value()))
+        self.smoothing_changed.emit(self.checkbox.isChecked(),
+            self.slider.value())
 
 ui_log = LoggingHandle()
 def log_ui(msg : str):
@@ -174,7 +174,7 @@ class UI_MainWindow(QMainWindow):
         self.pydsc.dscplot.canceled_analysis.connect(
             self.dscanalysis.cancel_new_analysis)
         self.pydsc.dscplot.reperform_analyses.connect(
-            lambda: self.dscanalysis.update_current_analysis(self.data))
+            self.dscanalysis.update_all_analyses)
 
         self.pydsc.results.analysis_name_changed.connect(
             self.dscanalysis.change_analysis_name)
@@ -413,7 +413,7 @@ class UI_Results(QFrame):
 class UI_DSCPlot(QFrame):
     analysis_made = Signal(dict)
     canceled_analysis = Signal()
-    reperform_analyses = Signal()
+    reperform_analyses = Signal(DSCData)
 
     def __init__(self):
         QFrame.__init__(self)
@@ -457,23 +457,24 @@ class UI_DSCPlot(QFrame):
         self.layout.addWidget(self.canvas)
         self.layout.addWidget(self.toolbar)
 
-    def update_smoothing(active : bool, window : int):
+    def update_smoothing(self, active : bool, window : int):
         if self.data is None:
             return
+        print(active, window)
         self.data.savgol_1_enabled = active
         self.data.savgol_1_window = window
         self.data.prepare_extra()
 
         # Replot all lines
-        plot1deriv = True if plot1deriv_lines else False
-        clear_graph()
+        plot1deriv = True if self.plot1deriv_lines else False
+        self.clear_graph()
         self.ax.plot(self.data.Tr, self.data.Heatflow)
         if plot1deriv:
             self.plot1deriv_lines = self.ax.plot(
                 self.data.Tr, self.data.Heatflow1Deriv)
 
         # Re-perform all analyses
-        self.reperform_analyses.emit()
+        self.reperform_analyses.emit(self.data)
 
         self.canvas.draw()
         pass
@@ -486,7 +487,8 @@ class UI_DSCPlot(QFrame):
                 self.data.Tr, self.data.Heatflow1Deriv)
             self.canvas.draw()
         else:
-            self.ax.lines.remove(self.plot1deriv_lines)
+            l = self.plot1deriv_lines.pop(0)
+            l.remove()
             self.plot1deriv_lines = None
             self.canvas.draw()
 
@@ -535,7 +537,8 @@ class UI_DSCPlot(QFrame):
 
     def clear_overlay_lines(self):
         for line in self.overlay_lines:
-            self.ax.lines.remove(line)
+            l = line.pop(0)
+            l.remove()
         self.overlay_lines = []
 
     def display_analysis(self, ana : dict):
@@ -571,10 +574,12 @@ class UI_DSCPlot(QFrame):
 
     def clear_graph(self):
         if self.plot_lines:
-            self.ax.lines.remove(self.plot_lines)
+            l = self.plot_lines.pop(0)
+            l.remove()
             self.plot_lines = None
         if self.plot1deriv_lines:
-            self.ax.lines.remove(self.plot1deriv_lines)
+            l = self.plot1deriv_lines.pop(0)
+            l.remove()
             self.plot1deriv_lines = None
         self.clear_overlay_lines()
 
