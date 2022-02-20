@@ -54,7 +54,7 @@ class ConfirmDialog(QDialog):
 class PerformSmoothingDialog(QDialog):
     smoothing_changed = Signal(bool, int)
 
-    def __init__(self):
+    def __init__(self, data : DSCData):
         QDialog.__init__(self)
         self.layout = QHBoxLayout(self)
 
@@ -73,6 +73,14 @@ class PerformSmoothingDialog(QDialog):
         self.layout.addWidget(self.checkbox)
         self.layout.addWidget(self.slider)
         self.layout.addWidget(self.slider_label)
+
+        if data is None:
+            return
+        else:
+            self.slider.setValue(data.savgol_1_window)
+            self.checkbox.setCheckState(Qt.Checked if data.savgol_1_enabled \
+                else Qt.Unchecked)
+
 
     def update_slider_value(self, value : int):
         self.slider_label.setText(str(value))
@@ -219,7 +227,7 @@ class UI_MainWindow(QMainWindow):
         self.pydsc.dscplot.update_selector(None)
 
     def smooth_dialog(self, s):
-        dialog = PerformSmoothingDialog()
+        dialog = PerformSmoothingDialog(self.data)
         dialog.smoothing_changed.connect(self.pydsc.dscplot.update_smoothing)
         dialog.exec()
 
@@ -461,7 +469,7 @@ class UI_DSCPlot(QFrame):
     def update_smoothing(self, active : bool, window : int):
         if self.data is None:
             return
-        print(active, window)
+        #print(active, window)
         self.data.savgol_1_enabled = active
         self.data.savgol_1_window = window
         self.data.prepare_extra()
