@@ -63,6 +63,7 @@ class DSCAnalysis(QObject):
         if len(ana) > 0:
             self.current_analysis = self.analyses[0]
             self.current_analysis_index = 0
+            self.load_analysis_display.emit(self.analyses)
             self.update_current_analysis.emit(self.current_analysis)
 
     # Deletes currently selected analysis
@@ -90,7 +91,6 @@ class DSCAnalysis(QObject):
 
     @Slot(int)
     def switch_analysis(self, index : int):
-        #print(index)
         if index == -1:
             self.current_analysis_index = None
             self.current_analysis = None

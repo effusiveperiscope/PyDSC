@@ -469,7 +469,6 @@ class UI_DSCPlot(QFrame):
     def update_smoothing(self, active : bool, window : int):
         if self.data is None:
             return
-        #print(active, window)
         self.data.savgol_1_enabled = active
         self.data.savgol_1_window = window
         self.data.prepare_extra()
