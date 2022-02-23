@@ -24,7 +24,7 @@ if __name__ == '__main__':
         text = f.read()
         data = dsc.parse_tabulated_txt(text)
 
-    with open(new_file_name, 'w') as f:
+    with open(new_file_name, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Index','t','Heatflow','Tr']) # Header
         for i in data.Index:
